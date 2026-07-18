@@ -8,7 +8,6 @@
       "UUID": "com.kiyoto.codex-progress-checker.status",
       "Icon": "imgs/actions/counter/icon",
       "Tooltip": "Displays a count, which increments by one on press.",
-      "PropertyInspectorPath": "ui/increment-counter.html",
       "Controllers": ["Keypad"],
       "States": [
         {
