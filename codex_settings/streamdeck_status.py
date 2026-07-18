@@ -19,6 +19,16 @@ STATUS_MAP = {
 }
 
 
+def resolve_state(event: str, tool_name=None) -> str:
+    if tool_name == "request_user_input":
+        if event == "PreToolUse":
+            return "waiting"
+        if event == "PostToolUse":
+            return "working"
+
+    return STATUS_MAP.get(event, "unknown")
+
+
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
@@ -27,6 +37,7 @@ def main() -> int:
         return 0
 
     event = payload.get("hook_event_name", "unknown")
+    tool_name = payload.get("tool_name")
     session_id = payload.get("session_id", "unknown")
     agent_id = payload.get("agent_id")
 
@@ -38,7 +49,7 @@ def main() -> int:
         "session_id": session_id,
         "agent_id": agent_id,
         "event": event,
-        "state": STATUS_MAP.get(event, "unknown"),
+        "state": resolve_state(event, tool_name),
         "cwd": payload.get("cwd"),
         "updated_at": time.time(),
     }

@@ -18,8 +18,8 @@ macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセ
 | 表示 | 色 | Hook イベント |
 | --- | --- | --- |
 | `IDLE` | 白 | 状態ファイルがない、または `SessionStart` |
-| `WORKING` | 青 | `UserPromptSubmit` / `SubagentStart` |
-| `WAITING` | 黄 | `PermissionRequest` |
+| `WORKING` | 青 | `UserPromptSubmit` / `SubagentStart` / `PostToolUse`（`request_user_input`） |
+| `WAITING` | 黄 | `PermissionRequest` / `PreToolUse`（`request_user_input`） |
 | `DONE` | 緑 | `Stop` / `SubagentStop` |
 | `ERROR` | 赤 | 状態ファイルの読み込み・形式に問題がある場合 |
 
@@ -76,15 +76,18 @@ OUTPUT_DIR = Path("/mnt/c/Users/<Windowsユーザー名>/AppData/Local/CodexStre
 "command": "python3 /home/<WSLユーザー名>/.codex/streamdeck_status.py"
 ```
 
-その内容を、利用中の Codex 設定の `hooks` に追加します。すでに `hooks` を設定済みの場合は、既存設定を残してイベントごとの配列へ追加してください。対象イベントは次の 5 つです。
+その内容を、利用中の Codex 設定の `hooks` に追加します。すでに `hooks` を設定済みの場合は、既存設定を残してイベントごとの配列へ追加してください。対象イベントは次の 7 つです。
 
 - `UserPromptSubmit`
+- `PreToolUse`（`request_user_input` のみ）
+- `PostToolUse`（`request_user_input` のみ）
 - `PermissionRequest`
 - `Stop`
 - `SubagentStart`
 - `SubagentStop`
 
 Codex CLI を新しく起動し、プロンプトを送信するとキーが `WORKING` に変わります。
+Plan モードで Codex が質問すると `WAITING` に変わり、回答すると再び `WORKING` に戻ります。
 
 ## 動作の仕組み
 
