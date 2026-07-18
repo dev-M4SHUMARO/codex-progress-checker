@@ -4,7 +4,7 @@
   "Author": "kiyoto",
   "Actions": [
     {
-      "Name": "Counter",
+      "Name": "CodexProgressChecker",
       "UUID": "com.kiyoto.codex-progress-checker.status",
       "Icon": "imgs/actions/counter/icon",
       "Tooltip": "Displays a count, which increments by one on press.",
