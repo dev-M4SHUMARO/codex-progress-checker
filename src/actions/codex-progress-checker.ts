@@ -80,6 +80,7 @@ const EVENT_STATE_MAP: Record<string, CodexState> = {
   UserPromptSubmit: "working",
   SubagentStart: "working",
   PermissionRequest: "waiting",
+  PostToolUse: "working",
   Stop: "completed",
   SubagentStop: "completed",
 };

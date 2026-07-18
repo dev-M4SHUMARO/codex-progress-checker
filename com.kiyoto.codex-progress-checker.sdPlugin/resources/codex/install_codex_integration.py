@@ -22,11 +22,14 @@ CONFIG_PATH = INSTALL_DIRECTORY / "config.json"
 HOOK_COMMAND = 'python3 "$HOME/.codex/codex-progress-checker/streamdeck_status.py"'
 STATUS_MESSAGE = "Updating Stream Deck Codex status"
 
-# 表示状態の更新に必要なイベントと、質問ツールだけへ絞るmatcherを一元管理する。
+# 表示状態の更新に必要なイベントと、必要なイベントだけへ絞るmatcherを一元管理する。
+# PreToolUseは質問ツールの開始だけをwaitingとして拾えばよいのでmatcherで絞る。
+# 一方PostToolUseは全ツールを対象にする。request_user_inputへ限定すると、
+# 回答後のイベントでツール名が一致せずwaitingから復帰できないことがあるため。
 HOOK_DEFINITIONS: dict[str, dict[str, Any]] = {
     "UserPromptSubmit": {},
     "PreToolUse": {"matcher": "^request_user_input$"},
-    "PostToolUse": {"matcher": "^request_user_input$"},
+    "PostToolUse": {},
     "PermissionRequest": {},
     "Stop": {},
     "SubagentStart": {},

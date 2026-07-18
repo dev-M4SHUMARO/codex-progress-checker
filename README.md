@@ -18,7 +18,7 @@ macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセ
 | 表示 | 色 | Hook イベント |
 | --- | --- | --- |
 | `IDLE` | 白 | 状態ファイルがない、または `SessionStart` |
-| `WORKING` | 青 | `UserPromptSubmit` / `SubagentStart` / `PostToolUse`（`request_user_input`） |
+| `WORKING` | 青 | `UserPromptSubmit` / `SubagentStart` / `PostToolUse`（全ツール） |
 | `WAITING` | 黄 | `PermissionRequest` / `PreToolUse`（`request_user_input`） |
 | `DONE` | 緑 | `Stop` / `SubagentStop` |
 | `ERROR` | 赤 | 状態ファイルの読み込み・形式に問題がある場合 |
@@ -33,7 +33,7 @@ macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセ
 - WSL 上の Python 3
 - Windows の `%LOCALAPPDATA%` を WSL から `/mnt/c/Users/<Windowsユーザー名>/AppData/Local` として参照できること
 
-リポジトリからビルド・開発する場合のみ、[Bun](https://bun.sh/) 1.3 以降が必要です。Python製のHookとインストーラーをテストする場合は、[uv](https://docs.astral.sh/uv/) も必要です。
+リポジトリからビルド・開発する場合のみ、Windows 上に Node.js と npm が必要です。Python製のHookとインストーラーをテストする場合は、WSL 上に [uv](https://docs.astral.sh/uv/) も必要です。
 
 ## セットアップ
 
@@ -54,13 +54,13 @@ macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセ
 
 ### リポジトリから開発する場合
 
-以下のコマンドは、特記がない限りWSLのリポジトリディレクトリで実行します。
+依存関係のインストール、ビルド、監視、Stream Deck CLI の操作は、Windows のリポジトリディレクトリで実行します。Codex CLI と Python 関連の操作は WSL で実行します。
 
 #### 1. 依存関係を入れてビルドする
 
 ```bash
-bun install
-bun run build
+npm install
+npm run build
 ```
 
 #### 2. Stream Deck に開発用プラグインとして登録する
@@ -68,7 +68,7 @@ bun run build
 Stream Deck を起動した状態で、リポジトリのルートから実行します。
 
 ```bash
-bunx streamdeck link com.kiyoto.codex-progress-checker.sdPlugin
+npx streamdeck link com.kiyoto.codex-progress-checker.sdPlugin
 ```
 
 Stream Deck アプリのアクション一覧に **codex-progress-checker** が現れたら、`Codex Status` アクションを任意のキーへ配置してください。同じアクションを複数配置し、それぞれの設定画面で「新しさの順位」を `1`、`2`、`3`…と指定すると、並行作業中の複数スレッドを確認できます。
@@ -100,13 +100,13 @@ C:\Users\<Windowsユーザー名>\AppData\Local\CodexStreamDeck
 ソース変更を監視し、ビルド後にプラグインを再起動します。
 
 ```bash
-bun run watch
+npm run watch
 ```
 
 単発ビルドは以下です。
 
 ```bash
-bun run build
+npm run build
 ```
 
 ### Pythonテスト
@@ -156,8 +156,8 @@ uv run pytest
 
 ### 変更が Stream Deck に反映されない
 
-- `bun run build` を実行してから、`bunx streamdeck restart com.kiyoto.codex-progress-checker` を実行してください。
-- 開発中は `bun run watch` を使うと、ビルドと再起動を自動化できます。
+- Windows で `npm run build` を実行してから、`npx streamdeck restart com.kiyoto.codex-progress-checker` を実行してください。
+- 開発中は Windows で `npm run watch` を使うと、ビルドと再起動を自動化できます。
 
 ## ライセンス
 
