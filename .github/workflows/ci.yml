@@ -1,6 +1,6 @@
 # GitHub Actions CI/CD パイプライン
 # このワークフローは、コードのプッシュやPR作成時に自動的に実行され、
-# 依存関係のインストールとテスト実行を行います。
+# 依存関係のインストール、ビルド、テストを行います。
 
 name: CI
 
@@ -38,14 +38,22 @@ jobs:
       with:
         bun-version: latest
 
+    # Pythonテストの依存関係はuv.lockから再現する
+    - uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+
     # プロジェクトの依存関係をインストール
     # --frozen-lockfile フラグにより：
-    # - package-lock.json を厳密に守ってインストール（CI環境での一貫性確保）
+    # - bun.lockを厳密に守ってインストール（CI環境での一貫性確保）
     # - 予期しないバージョン変更を防止
     - name: Install dependencies
       run: bun install --frozen-lockfile
 
-    # テストスイートを実行
-    # CLAUDE.md に従い、Jest や Vitest ではなく bun test を使用
-    - name: Run tests
-      run: bun test
+    # TypeScriptをビルドして型エラーやバンドル失敗を検出する
+    - name: Build
+      run: bun run build
+
+    # 現在の自動テストはPython製インストーラーを対象としている
+    - name: Run Python tests
+      run: uv run --frozen pytest
