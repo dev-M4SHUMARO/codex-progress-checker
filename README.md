@@ -18,7 +18,7 @@ macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセ
 | 表示 | 色 | Hook イベント |
 | --- | --- | --- |
 | `IDLE` | 白 | 状態ファイルがない、または `SessionStart` |
-| `WORKING` | 青 | `UserPromptSubmit` / `SubagentStart` / `PostToolUse`（`request_user_input`） |
+| `WORKING` | 青 | `UserPromptSubmit` / `SubagentStart` / `PostToolUse`（全ツール） |
 | `WAITING` | 黄 | `PermissionRequest` / `PreToolUse`（`request_user_input`） |
 | `DONE` | 緑 | `Stop` / `SubagentStop` |
 | `ERROR` | 赤 | 状態ファイルの読み込み・形式に問題がある場合 |
