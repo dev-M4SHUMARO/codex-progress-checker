@@ -1,6 +1,7 @@
 # AGENTS.md
 
 このリポジトリで Coding Agent が作業するときの共通ルールです。特に指示がない限り、リポジトリ全体に適用します。
+Claude Code で作業する場合も、このファイルを一次情報として参照してください。
 
 ## 基本方針
 
@@ -21,6 +22,34 @@
 - パッケージ実行: `bunx <package> <command>`
 
 `npm` / `yarn` / `pnpm` / `npx` を使う必要がある場合は、理由を明確にしてください。
+
+### Bun 利用方針
+
+- `node <file>` や `ts-node <file>` ではなく `bun <file>` を使ってください。
+- `jest` や `vitest` ではなく `bun test` を使ってください。
+- `webpack` や `esbuild` ではなく、必要に応じて `bun build <file.html|file.ts|file.css>` を使ってください。
+- `npm install` / `yarn install` / `pnpm install` ではなく `bun install` を使ってください。
+- `npm run <script>` / `yarn run <script>` / `pnpm run <script>` ではなく `bun run <script>` を使ってください。
+- `npx <package> <command>` ではなく `bunx <package> <command>` を使ってください。
+- Bun は `.env` を自動で読み込むため、`dotenv` は使わないでください。
+
+### Bun API の優先
+
+- `express` ではなく、WebSockets、HTTPS、routes をサポートする `Bun.serve()` を使ってください。
+- SQLite には `better-sqlite3` ではなく `bun:sqlite` を使ってください。
+- Redis には `ioredis` ではなく `Bun.redis` を使ってください。
+- Postgres には `pg` や `postgres.js` ではなく `Bun.sql` を使ってください。
+- WebSocket には `ws` ではなく、組み込みの `WebSocket` を使ってください。
+- `node:fs` の `readFile` / `writeFile` より `Bun.file` を優先してください。
+- `execa` ではなく ``Bun.$`command` `` を優先してください。
+- Bun API の詳細が必要な場合は、`node_modules/bun-types/docs/**/*.mdx` を参照してください。
+
+### フロントエンド
+
+- `vite` ではなく、`Bun.serve()` と HTML imports の利用を優先してください。
+- HTML imports は React、CSS、Tailwind をサポートしています。
+- HTML ファイルは `.tsx`、`.jsx`、`.js` ファイルを直接 import でき、Bun の bundler が transpile と bundle を行います。
+- 開発時に HMR が必要な場合は、`bun --hot ./index.ts` のように実行してください。
 
 ## コード設計
 
