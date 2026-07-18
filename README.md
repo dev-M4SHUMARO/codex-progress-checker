@@ -25,6 +25,10 @@ macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセ
 
 複数の Codex セッションがある場合は、状態ファイルを最終更新時刻の新しい順に並べます。各キーの設定画面にある「新しさの順位」へ `1`（最新）、`2`（2番目に新しい）、`3`（3番目に新しい）のように指定すると、その順位の状態を表示します。キー上には `LATEST` または `RECENT #2` のように表示されます。値に上限はありません。対象のスレッドがない場合は `IDLE / No thread` と表示します。
 
+プロジェクトディレクトリが Git リポジトリの場合は、現在のブランチ名もプロジェクト名の下に表示します。Git リポジトリでない場合や `git` コマンドが利用できない場合は、ブランチ名の表示自体を省略します。
+
+プロジェクト名とブランチ名のフォントサイズは、設定画面の `Project Font Size` と `Branch Font Size`（各8〜24）から個別に調整できます。
+
 ## 必要なもの
 
 - Windows 10 以降、および Stream Deck 7.1 以降
@@ -137,7 +141,8 @@ uv run pytest
 | [`com.kiyoto.codex-progress-checker.sdPlugin/resources/codex/install_codex_integration.py`](com.kiyoto.codex-progress-checker.sdPlugin/resources/codex/install_codex_integration.py) | 既存Hookを維持したインストール・解除処理 |
 | [`com.kiyoto.codex-progress-checker.sdPlugin/resources/codex/streamdeck_status.py`](com.kiyoto.codex-progress-checker.sdPlugin/resources/codex/streamdeck_status.py) | Codex Hook の入力を状態 JSON に変換 |
 | [`tests/test_install_codex_integration.py`](tests/test_install_codex_integration.py) | WSL/Codex側インストーラーのpytest |
-| [`tests/conftest.py`](tests/conftest.py) | pytestで共有する隔離済みインストーラーfixture |
+| [`tests/test_streamdeck_status.py`](tests/test_streamdeck_status.py) | 状態JSON変換スクリプトのブランチ名解決のpytest |
+| [`tests/conftest.py`](tests/conftest.py) | pytestで共有する隔離済みインストーラー・状態変換スクリプトfixture |
 | [`com.kiyoto.codex-progress-checker.sdPlugin/manifest.json`](com.kiyoto.codex-progress-checker.sdPlugin/manifest.json) | Stream Deck プラグインのマニフェスト |
 
 ## トラブルシュート

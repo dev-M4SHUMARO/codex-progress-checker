@@ -20,18 +20,35 @@ type CodexState =
 type StatusSnapshot = {
   state: CodexState;
   project: string;
+  branch?: string;
   updatedAt: number;
   event?: string;
 };
 
 type CodexStatusSettings = {
   threadNumber?: number | string;
+  projectFontSize?: number | string;
+  branchFontSize?: number | string;
 };
 
 /**
  * JSONファイルを確認する間隔。
  */
 const POLL_INTERVAL_MS = 1_000;
+
+/**
+ * プロジェクト名テキストのフォントサイズの初期値と範囲。
+ */
+const DEFAULT_PROJECT_FONT_SIZE = 13;
+const MIN_PROJECT_FONT_SIZE = 8;
+const MAX_PROJECT_FONT_SIZE = 24;
+
+/**
+ * ブランチ名テキストのフォントサイズの初期値と範囲。
+ */
+const DEFAULT_BRANCH_FONT_SIZE = 11;
+const MIN_BRANCH_FONT_SIZE = 8;
+const MAX_BRANCH_FONT_SIZE = 24;
 
 /**
  * WSL側では以下と同じディレクトリ。
@@ -121,6 +138,16 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
   private readonly offsets = new Map<string, number>();
 
   /**
+   * アクションごとのプロジェクト名フォントサイズを保持する。
+   */
+  private readonly projectFontSizes = new Map<string, number>();
+
+  /**
+   * アクションごとのブランチ名フォントサイズを保持する。
+   */
+  private readonly branchFontSizes = new Map<string, number>();
+
+  /**
    * 同じエラーを毎秒ログ出力しないために使う。
    */
   private lastLoggedError: string | undefined;
@@ -139,6 +166,16 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     ) - 1;
     this.offsets.set(ev.action.id, offset);
 
+    const projectFontSize = normalizeProjectFontSize(
+      ev.payload.settings.projectFontSize,
+    );
+    this.projectFontSizes.set(ev.action.id, projectFontSize);
+
+    const branchFontSize = normalizeBranchFontSize(
+      ev.payload.settings.branchFontSize,
+    );
+    this.branchFontSizes.set(ev.action.id, branchFontSize);
+
     const statuses = await this.loadStatusesSafely();
     const status = selectStatus(statuses, offset);
 
@@ -146,11 +183,18 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       ev.action,
       status,
       offset,
+      projectFontSize,
+      branchFontSize,
     );
 
     this.lastSignatures.set(
       ev.action.id,
-      this.createSignature(status, offset),
+      this.createSignature(
+        status,
+        offset,
+        projectFontSize,
+        branchFontSize,
+      ),
     );
   }
 
@@ -165,6 +209,8 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       this.visibleActionCount - 1,
     );
     this.offsets.delete(ev.action.id);
+    this.projectFontSizes.delete(ev.action.id);
+    this.branchFontSizes.delete(ev.action.id);
     this.lastSignatures.delete(ev.action.id);
 
     if (this.visibleActionCount === 0) {
@@ -183,6 +229,16 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     ) - 1;
     this.offsets.set(ev.action.id, offset);
 
+    const projectFontSize = normalizeProjectFontSize(
+      ev.payload.settings.projectFontSize,
+    );
+    this.projectFontSizes.set(ev.action.id, projectFontSize);
+
+    const branchFontSize = normalizeBranchFontSize(
+      ev.payload.settings.branchFontSize,
+    );
+    this.branchFontSizes.set(ev.action.id, branchFontSize);
+
     const statuses = await this.loadStatusesSafely();
     const status = selectStatus(statuses, offset);
 
@@ -190,11 +246,18 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       ev.action,
       status,
       offset,
+      projectFontSize,
+      branchFontSize,
     );
 
     this.lastSignatures.set(
       ev.action.id,
-      this.createSignature(status, offset),
+      this.createSignature(
+        status,
+        offset,
+        projectFontSize,
+        branchFontSize,
+      ),
     );
   }
 
@@ -209,13 +272,34 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     ) - 1;
     this.offsets.set(ev.action.id, offset);
 
+    const projectFontSize = normalizeProjectFontSize(
+      ev.payload.settings.projectFontSize,
+    );
+    this.projectFontSizes.set(ev.action.id, projectFontSize);
+
+    const branchFontSize = normalizeBranchFontSize(
+      ev.payload.settings.branchFontSize,
+    );
+    this.branchFontSizes.set(ev.action.id, branchFontSize);
+
     const statuses = await this.loadStatusesSafely();
     const status = selectStatus(statuses, offset);
 
-    await this.renderAction(ev.action, status, offset);
+    await this.renderAction(
+      ev.action,
+      status,
+      offset,
+      projectFontSize,
+      branchFontSize,
+    );
     this.lastSignatures.set(
       ev.action.id,
-      this.createSignature(status, offset),
+      this.createSignature(
+        status,
+        offset,
+        projectFontSize,
+        branchFontSize,
+      ),
     );
   }
 
@@ -270,9 +354,20 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       this.actions.forEach((visibleAction) => {
         const offset =
           this.offsets.get(visibleAction.id) ?? 0;
+        const projectFontSize =
+          this.projectFontSizes.get(visibleAction.id) ??
+          DEFAULT_PROJECT_FONT_SIZE;
+        const branchFontSize =
+          this.branchFontSizes.get(visibleAction.id) ??
+          DEFAULT_BRANCH_FONT_SIZE;
         const status = selectStatus(statuses, offset);
         const signature =
-          this.createSignature(status, offset);
+          this.createSignature(
+            status,
+            offset,
+            projectFontSize,
+            branchFontSize,
+          );
 
         if (
           signature ===
@@ -290,6 +385,8 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
             visibleAction,
             status,
             offset,
+            projectFontSize,
+            branchFontSize,
           ),
         );
       });
@@ -445,9 +542,15 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       const project =
         getProjectName(parsed);
 
+      const branch =
+        typeof parsed.branch === "string" && parsed.branch.length > 0
+          ? parsed.branch
+          : undefined;
+
       return {
         state,
         project,
+        branch,
         updatedAt,
         event,
       };
@@ -467,8 +570,15 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     actionInstance: WillAppearEvent<CodexStatusSettings>["action"],
     status: StatusSnapshot,
     offset: number,
+    projectFontSize: number,
+    branchFontSize: number,
   ): Promise<void> {
-    const svg = createStatusSvg(status, offset);
+    const svg = createStatusSvg(
+      status,
+      offset,
+      projectFontSize,
+      branchFontSize,
+    );
 
     await Promise.all([
       /*
@@ -489,13 +599,18 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
   private createSignature(
     status: StatusSnapshot,
     offset: number,
+    projectFontSize: number,
+    branchFontSize: number,
   ): string {
     return [
       offset,
       status.state,
       status.project,
+      status.branch ?? "",
       status.updatedAt,
       status.event ?? "",
+      projectFontSize,
+      branchFontSize,
     ].join("|");
   }
 }
@@ -539,6 +654,48 @@ function normalizeThreadNumber(value: unknown): number {
   return Math.min(
     Math.floor(threadNumber),
     Number.MAX_SAFE_INTEGER,
+  );
+}
+
+/**
+ * プロジェクト名テキストのフォントサイズを、表示可能な範囲へ丸める。
+ */
+function normalizeProjectFontSize(value: unknown): number {
+  const fontSize =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : DEFAULT_PROJECT_FONT_SIZE;
+
+  if (!Number.isFinite(fontSize)) {
+    return DEFAULT_PROJECT_FONT_SIZE;
+  }
+
+  return Math.min(
+    MAX_PROJECT_FONT_SIZE,
+    Math.max(MIN_PROJECT_FONT_SIZE, Math.round(fontSize)),
+  );
+}
+
+/**
+ * ブランチ名テキストのフォントサイズを、表示可能な範囲へ丸める。
+ */
+function normalizeBranchFontSize(value: unknown): number {
+  const fontSize =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : DEFAULT_BRANCH_FONT_SIZE;
+
+  if (!Number.isFinite(fontSize)) {
+    return DEFAULT_BRANCH_FONT_SIZE;
+  }
+
+  return Math.min(
+    MAX_BRANCH_FONT_SIZE,
+    Math.max(MIN_BRANCH_FONT_SIZE, Math.round(fontSize)),
   );
 }
 
@@ -612,6 +769,10 @@ function getProjectName(
       ? status.id
       : undefined;
 
+  /*
+   * 表示文字数はcreateStatusSvgがフォントサイズに応じて調整するため、
+   * ここでは異常に長い値だけを抑える。
+   */
   if (cwd !== undefined) {
     const segments = cwd
       .replaceAll("\\", "/")
@@ -620,13 +781,26 @@ function getProjectName(
 
     return truncate(
       segments.at(-1) ?? "Codex",
-      15,
+      60,
     );
   }
 
   return truncate(
     id ?? "Codex",
-    15,
+    60,
+  );
+}
+
+/**
+ * 与えられたフォントサイズでキー幅に収まる、おおよその最大文字数。
+ */
+function maxLabelLength(fontSize: number): number {
+  const usableWidth = 128;
+  const estimatedCharWidth = fontSize * 0.6;
+
+  return Math.max(
+    4,
+    Math.floor(usableWidth / estimatedCharWidth),
   );
 }
 
@@ -636,6 +810,8 @@ function getProjectName(
 function createStatusSvg(
   status: StatusSnapshot,
   offset: number,
+  projectFontSize: number,
+  branchFontSize: number,
 ): string {
   const backgroundColor =
     STATE_COLORS[status.state];
@@ -648,8 +824,19 @@ function createStatusSvg(
   );
 
   const projectLabel = escapeXml(
-    status.project,
+    truncate(status.project, maxLabelLength(projectFontSize)),
   );
+
+  const branchLabel =
+    status.branch !== undefined
+      ? escapeXml(
+          truncate(status.branch, maxLabelLength(branchFontSize)),
+        )
+      : undefined;
+
+  const stateY = branchLabel !== undefined ? 65 : 70;
+  const projectY = branchLabel !== undefined ? 94 : 99;
+  const branchY = 123;
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg"
@@ -677,7 +864,7 @@ function createStatusSvg(
 
   <text
     x="72"
-    y="70"
+    y="${stateY}"
     text-anchor="middle"
     font-family="Arial, sans-serif"
     font-size="20"
@@ -688,13 +875,28 @@ function createStatusSvg(
 
   <text
     x="72"
-    y="99"
+    y="${projectY}"
     text-anchor="middle"
     font-family="Arial, sans-serif"
-    font-size="13"
+    font-size="${projectFontSize}"
     fill="${textColor}">
     ${projectLabel}
   </text>
+${
+    branchLabel !== undefined
+      ? `
+  <text
+    x="72"
+    y="${branchY}"
+    text-anchor="middle"
+    font-family="Arial, sans-serif"
+    font-size="${branchFontSize}"
+    fill="${textColor}"
+    opacity="0.75">
+    ${branchLabel}
+  </text>`
+      : ""
+  }
 </svg>`.trim();
 }
 

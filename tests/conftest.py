@@ -19,6 +19,15 @@ INSTALLER_PATH = (
     / "install_codex_integration.py"
 )
 
+# Codex Hookの出力を状態JSONへ変換するスクリプトをテスト対象として固定する。
+STATUS_SCRIPT_PATH = (
+    Path(__file__).parents[1]
+    / "com.kiyoto.codex-progress-checker.sdPlugin"
+    / "resources"
+    / "codex"
+    / "streamdeck_status.py"
+)
+
 
 @pytest.fixture
 def installer(tmp_path: Path, mocker: MockerFixture) -> ModuleType:
@@ -41,4 +50,23 @@ def installer(tmp_path: Path, mocker: MockerFixture) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
+    return module
+
+
+@pytest.fixture
+def status_module(tmp_path: Path) -> ModuleType:
+    """streamdeck_status.pyをテストごとに独立したモジュールとして読み込む。"""
+
+    # Act: テストごとに別名で読み込み、モジュール間の状態共有を避ける。
+    spec = importlib.util.spec_from_file_location(
+        f"codex_progress_checker_status_{tmp_path.name}",
+        STATUS_SCRIPT_PATH,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Codex status script could not be loaded")
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    # Assert相当: 読み込みに成功したモジュールだけをテスト本体へ渡す。
     return module
