@@ -1,0 +1,59 @@
+# GitHub Actions CI/CD パイプライン
+# このワークフローは、コードのプッシュやPR作成時に自動的に実行され、
+# 依存関係のインストール、ビルド、テストを行います。
+
+name: CI
+
+# ワークフロー実行のトリガー設定
+on:
+  # masterやdevelopブランチへのプッシュ時に実行
+  push:
+    branches: [ master, main, develop ]
+  # PRが作成・更新された時に実行（品質チェック用）
+  pull_request:
+    branches: [ master, main, develop ]
+
+jobs:
+  test:
+    # Ubuntu環境で実行
+    runs-on: ubuntu-latest
+
+    steps:
+    # リポジトリのコードをCI環境にダウンロード・セットアップ
+    #
+    # actions/checkout@v4 について：
+    # - GitHub公式が提供するアクション（あらかじめ用意されたツール）
+    # - CI環境のUbuntuサーバーにこのリポジトリのコードを持ってくる
+    # - これがないと後続のステップがコードにアクセスできない
+    # - @v4 はバージョン4を指定（常に最新のパッチが自動適用される）
+    # - 最新版はNode.js 24対応のため、Node.js非推奨警告は出ない
+    - uses: actions/checkout@v4
+
+    # Bun ランタイムをセットアップ
+    # Node.js/npm の代わりに Bun を使用することで：
+    # - パフォーマンスの向上（高速なインストール・実行）
+    # - Node.js バージョン管理の複雑性を排除
+    # - CLAUDE.md で指定された Bun 優先ポリシーに準拠
+    - uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+
+    # Pythonテストの依存関係はuv.lockから再現する
+    - uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+
+    # プロジェクトの依存関係をインストール
+    # --frozen-lockfile フラグにより：
+    # - bun.lockを厳密に守ってインストール（CI環境での一貫性確保）
+    # - 予期しないバージョン変更を防止
+    - name: Install dependencies
+      run: bun install --frozen-lockfile
+
+    # TypeScriptをビルドして型エラーやバンドル失敗を検出する
+    - name: Build
+      run: bun run build
+
+    # 現在の自動テストはPython製インストーラーを対象としている
+    - name: Run Python tests
+      run: uv run --frozen pytest

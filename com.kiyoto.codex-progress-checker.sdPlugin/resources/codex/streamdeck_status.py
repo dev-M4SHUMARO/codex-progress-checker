@@ -49,14 +49,20 @@ def resolve_output_dir() -> Path:
 def resolve_state(event: str, tool_name=None) -> str:
     """Hookイベントとツール名からStream Deck表示用の状態を決める。"""
 
-    # 質問ツールは呼出前が回答待ち、呼出後が作業再開なのでイベントだけでは判定しない。
     if tool_name == "request_user_input":
         if event == "PreToolUse":
             return "waiting"
         if event == "PostToolUse":
             return "working"
+    # user_input待ちの解除は特定のツール名に依存せず、
+    # 何らかのツール呼び出しが完了した時点で必ずworkingへ戻す。
+    # ツール名の厳密一致に頼ると、回答後にwaitingへ戻れなくなる。
+    if event == "PostToolUse":
+        return "working"
 
-    # 質問ツール以外はライフサイクルイベントの固定対応表から状態を返す。
+    if tool_name == "request_user_input" and event == "PreToolUse":
+        return "waiting"
+
     return STATUS_MAP.get(event, "unknown")
 
 

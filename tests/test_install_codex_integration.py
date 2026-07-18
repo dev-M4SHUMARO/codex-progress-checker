@@ -108,6 +108,37 @@ def test_invalid_existing_hooks_are_not_overwritten(
     assert not installer.INSTALL_DIRECTORY.exists()
 
 
+def test_post_tool_use_hook_matches_all_tools(
+    installer: ModuleType,
+    tmp_path: Path,
+) -> None:
+    """PostToolUseは全ツールで発火させ、質問回答後にwaitingから復帰できるようにする。"""
+
+    # Arrange: 追加設定のない状態からCodex連携をインストールする。
+    status_script = tmp_path / "bundled_status.py"
+    status_script.write_text("print('{}')\n", encoding="utf-8")
+
+    # Act: インストーラーが利用者のhooks.jsonへHookを書き込む。
+    installer.install(status_script, tmp_path / "output")
+
+    # Assert: PostToolUseはmatcher無しで全ツールを拾い、PreToolUseは質問ツールだけへ絞る。
+    document = json.loads(installer.HOOKS_PATH.read_text(encoding="utf-8"))
+    post_group = our_group(installer, document, "PostToolUse")
+    assert "matcher" not in post_group
+    pre_group = our_group(installer, document, "PreToolUse")
+    assert pre_group.get("matcher") == "^request_user_input$"
+
+
+def our_group(installer: ModuleType, document: dict, event: str) -> dict:
+    """指定イベント配下で本プラグインが追加したhandlerを含むgroupを返す。"""
+
+    # 他製品のgroupと混在しても、commandの一致で自分のgroupだけを特定する。
+    for group in document["hooks"][event]:
+        if any(installer.is_our_handler(handler) for handler in group["hooks"]):
+            return group
+    raise AssertionError(f"our handler not found for event '{event}'")
+
+
 def count_our_hooks(installer: ModuleType, document: dict) -> int:
     """テスト対象が所有するHook handlerだけを数える。"""
 
