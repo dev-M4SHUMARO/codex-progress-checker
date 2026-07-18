@@ -1,6 +1,6 @@
 {
   "Name": "codex-progress-checker",
-  "Version": "0.1.0.0",
+  "Version": "0.2.0.0",
   "Author": "kiyoto",
   "Actions": [
     {
@@ -9,7 +9,9 @@
       "Icon": "imgs/actions/counter/icon",
       "Tooltip": "Shows a Codex thread selected by its recency.",
       "PropertyInspectorPath": "ui/codex-status.html",
-      "Controllers": ["Keypad"],
+      "Controllers": [
+        "Keypad"
+      ],
       "States": [
         {
           "Image": "imgs/actions/counter/key",
@@ -29,17 +31,12 @@
   },
   "OS": [
     {
-      "Platform": "mac",
-      "MinimumVersion": "12"
-    },
-    {
       "Platform": "windows",
       "MinimumVersion": "10"
     }
   ],
   "Nodejs": {
-    "Version": "24",
-    "Debug": "enabled"
+    "Version": "24"
   },
   "UUID": "com.kiyoto.codex-progress-checker"
 }
