@@ -24,13 +24,13 @@ INSTALLER_PATH = (
 def installer(tmp_path: Path, mocker: MockerFixture) -> ModuleType:
     """実ユーザーの~/.codexを触らないインストーラーモジュールを返す。"""
 
-    # Arrange: モジュール定数の初期化前に、インストール先HOMEを一時領域へ差し替える。
+    # モジュール定数の初期化前に、インストール先HOMEを一時領域へ差し替える。
     mocker.patch.dict(
         os.environ,
         {"CODEX_PROGRESS_CHECKER_HOME": str(tmp_path)},
     )
 
-    # Act: テストごとに別名で読み込み、パス定数を一時HOMEから再評価する。
+    # テストごとに別名で読み込み、パス定数を一時HOMEから再評価する。
     spec = importlib.util.spec_from_file_location(
         f"codex_progress_checker_installer_{tmp_path.name}",
         INSTALLER_PATH,
@@ -41,5 +41,4 @@ def installer(tmp_path: Path, mocker: MockerFixture) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    # Assert相当: 読み込みに成功したモジュールだけをテスト本体へ渡す。
     return module
