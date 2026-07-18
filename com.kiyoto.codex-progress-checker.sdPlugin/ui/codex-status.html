@@ -19,7 +19,9 @@
       gap: 8px;
     }
 
-    input {
+    input,
+    select,
+    button {
       box-sizing: border-box;
       width: 100%;
       min-width: 0;
@@ -36,6 +38,51 @@
       color: #aaa;
       font-size: 11px;
     }
+
+    .integration {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #555;
+    }
+
+    .integration h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:disabled,
+    select:disabled {
+      cursor: default;
+      opacity: 0.55;
+    }
+
+    .status {
+      min-height: 30px;
+      margin: 8px 0 0;
+      color: #aaa;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .status.success {
+      color: #77d69c;
+    }
+
+    .status.error {
+      color: #ff858f;
+    }
   </style>
 </head>
 <body>
@@ -45,13 +92,41 @@
     <div class="hint">1 = Latest, 2 = Second most recent</div>
   </div>
 
+  <section class="integration">
+    <h2>Codex CLI Integration</h2>
+    <div class="setting">
+      <label for="wsl-distribution">WSL Distribution</label>
+      <select id="wsl-distribution" disabled>
+        <option>Detecting...</option>
+      </select>
+      <div class="hint">Installs the bundled Hook into this distribution.</div>
+    </div>
+    <div class="buttons">
+      <button id="install-integration" type="button" disabled>Set Up</button>
+      <button id="uninstall-integration" type="button" disabled>Remove</button>
+    </div>
+    <p id="integration-status" class="status" role="status">Connecting...</p>
+  </section>
+
   <script>
     // 入力欄とStream Deckとの通信に必要な状態を保持する。
     // settingsは設定がまだ保存されていない場合、最新を表す1から始める。
     const input = document.getElementById("thread-number");
+
+    // Codex連携の選択、実行、結果表示を操作するDOM参照を初期化時に固定する。
+    const distributionSelect = document.getElementById("wsl-distribution");
+    const installButton = document.getElementById("install-integration");
+    const uninstallButton = document.getElementById("uninstall-integration");
+    const integrationStatus = document.getElementById("integration-status");
+
+    // WebSocketの接続情報と現在のアクション設定を、イベント間で共有する。
     let socket;
     let propertyInspectorUuid;
+    let actionUuid;
     let settings = { threadNumber: 1 };
+
+    // WSL操作中の二重送信を防ぐため、UI全体で処理中状態を共有する。
+    let integrationBusy = false;
 
     // 入力値を1以上の整数へ変換する。
     // 空欄、負数、小数、数値以外が保存されないようにするために使用する。
@@ -65,12 +140,113 @@
     // 受け取った設定を現在値へ統合し、正規化した値を入力欄へ反映する。
     // 初期表示とStream Deckからの設定更新を同じ手順で処理するための関数。
     function applySettings(nextSettings) {
+      // 未変更項目を失わないよう既存値へ部分更新をマージする。
       settings = {
         ...settings,
         ...nextSettings,
       };
+      // 保存値と表示値を同じ正規化結果に揃え、再表示時の差異を防ぐ。
       settings.threadNumber = normalizeThreadNumber(settings.threadNumber);
       input.value = String(settings.threadNumber);
+    }
+
+    // Codex連携操作をバックエンドへ送り、応答まで入力をロックする。
+    function sendIntegration(operation) {
+      // 未接続時や実行中は送信せず、同じ設定を並行更新しない。
+      if (socket?.readyState !== WebSocket.OPEN || integrationBusy) {
+        return;
+      }
+
+      // 応答を受けるまで全操作を無効化し、現在の進捗を利用者へ表示する。
+      integrationBusy = true;
+      updateIntegrationControls();
+      setIntegrationStatus(
+        operation === "discover" ? "Detecting WSL distributions..." : "Working...",
+      );
+
+      // Stream DeckのsendToPlugin形式で、許可済み操作と選択中WSLだけを送る。
+      socket.send(JSON.stringify({
+        event: "sendToPlugin",
+        action: actionUuid,
+        context: propertyInspectorUuid,
+        payload: {
+          type: "codexIntegration",
+          operation,
+          distribution: operation === "discover" ? undefined : distributionSelect.value,
+        },
+      }));
+    }
+
+    // WSLの有無、実行中状態、導入状態に応じて操作可能なボタンだけを有効にする。
+    function updateIntegrationControls(installed) {
+      // 選択肢が空の場合に空文字を有効なディストリビューションとして扱わない。
+      const hasDistribution = Boolean(distributionSelect.value);
+      distributionSelect.disabled = integrationBusy || distributionSelect.options.length === 0;
+      installButton.disabled = integrationBusy || !hasDistribution;
+      uninstallButton.disabled = integrationBusy || !hasDistribution || installed === false;
+    }
+
+    // 通常・成功・失敗のメッセージと色を一つの経路で更新する。
+    function setIntegrationStatus(message, kind) {
+      // textContentを使い、外部プロセスのエラー文字列をHTMLとして解釈させない。
+      integrationStatus.textContent = message;
+      integrationStatus.className = `status${kind ? ` ${kind}` : ""}`;
+    }
+
+    // バックエンドから届いた結果をselect、ボタン、状態メッセージへ反映する。
+    function applyIntegrationResult(payload) {
+      // 成否にかかわらず応答を受けた時点で二重送信ロックを解除する。
+      integrationBusy = false;
+
+      // 失敗時は原因を表示し、WSL検出失敗なら仮の選択肢も除去する。
+      if (!payload.ok) {
+        if (payload.operation === "discover") {
+          distributionSelect.replaceChildren();
+        }
+        setIntegrationStatus(payload.message ?? "Codex integration failed.", "error");
+        updateIntegrationControls();
+        return;
+      }
+
+      // 検出結果はselectを作り直し、先頭ディストリビューションの状態確認へ続ける。
+      if (payload.operation === "discover") {
+        distributionSelect.replaceChildren();
+        // textContentで名前を設定し、ディストリビューション名を安全に表示する。
+        for (const distribution of payload.distributions ?? []) {
+          const option = document.createElement("option");
+          option.value = distribution;
+          option.textContent = distribution;
+          distributionSelect.append(option);
+        }
+
+        // 選択肢を反映した後で操作可否を更新し、導入状態を自動取得する。
+        updateIntegrationControls();
+        if (distributionSelect.value) {
+          sendIntegration("status");
+        } else {
+          setIntegrationStatus("No WSL distribution was found.", "error");
+        }
+        return;
+      }
+
+      // Pythonが明示的にtrueを返した場合だけ、完全に導入済みと判断する。
+      const installed = payload.status?.installed === true;
+      updateIntegrationControls(installed);
+
+      // 操作別に次の手順が分かる完了メッセージを表示する。
+      if (payload.operation === "install") {
+        setIntegrationStatus(
+          "Installed. Restart Codex, then open /hooks and trust the new hooks.",
+          "success",
+        );
+      } else if (payload.operation === "uninstall") {
+        setIntegrationStatus("Codex integration was removed.", "success");
+      } else {
+        setIntegrationStatus(
+          installed ? "Codex integration is installed." : "Codex integration is not installed.",
+          installed ? "success" : undefined,
+        );
+      }
     }
 
     // Property Inspectorが開かれたとき、Stream Deckアプリから呼び出される。
@@ -88,6 +264,9 @@
 
       // actionInfoから対象キーに保存されている現在の設定を取得する。
       const parsedActionInfo = JSON.parse(actionInfo);
+
+      // sendToPluginにはアクションUUIDが必要なので、初期情報から保持する。
+      actionUuid = parsedActionInfo.action;
       applySettings(parsedActionInfo.payload?.settings ?? {});
 
       // Stream Deckアプリが指定したローカルポートへ接続する。
@@ -96,19 +275,27 @@
 
       // 接続後にProperty Inspectorを登録し、イベントの送受信を有効にする。
       socket.addEventListener("open", () => {
+        // 先にProperty Inspectorを登録してから、初回のWSL検出を要求する。
         socket.send(JSON.stringify({
           event: registerEvent,
           uuid,
         }));
+        sendIntegration("discover");
       });
 
       // Stream Deck側で対象キーの設定が更新された場合、入力欄も同期する。
       // このWebSocketは現在開いているProperty Inspector専用なので、
       // didReceiveSettingsイベントだけを判定すれば対象キーを識別できる。
       socket.addEventListener("message", (event) => {
+        // Stream Deckから届くJSONをイベント種別ごとに既存設定と連携結果へ振り分ける。
         const message = JSON.parse(event.data);
         if (message.event === "didReceiveSettings") {
           applySettings(message.payload?.settings ?? {});
+        } else if (
+          message.event === "sendToPropertyInspector" &&
+          message.payload?.type === "codexIntegrationResult"
+        ) {
+          applyIntegrationResult(message.payload);
         }
       });
     };
@@ -127,6 +314,21 @@
           payload: settings,
         }));
       }
+    });
+
+    distributionSelect.addEventListener("change", () => {
+      // WSLを切り替えたら、その環境固有の導入状態を再確認する。
+      sendIntegration("status");
+    });
+
+    installButton.addEventListener("click", () => {
+      // 明示的な利用者操作があった場合だけ、WSL側の設定を書き換える。
+      sendIntegration("install");
+    });
+
+    uninstallButton.addEventListener("click", () => {
+      // 解除も明示操作に限定し、本プラグイン所有のHookだけを削除する。
+      sendIntegration("uninstall");
     });
   </script>
 </body>
