@@ -2,7 +2,14 @@
 
 Codex agent の実行状況を Stream Deck のキーで確認する開発用プラグインです。Codex CLI の Hook が出力する状態ファイルを読み取り、作業中・ユーザー入力待ち・完了などをキーに表示します。
 
-> 現在は Windows 上の Stream Deck と WSL 上の Codex CLI を組み合わせる用途を主な対象としています。
+## 対象環境
+
+現時点では、**Windows 上で Stream Deck を使用し、WSL 上で Codex CLI を実行する構成**を前提としています。
+
+- Stream Deck プラグインは Windows で動作し、`%LOCALAPPDATA%\\CodexStreamDeck` の状態ファイルを読み取ります。
+- Codex CLI は WSL で動作し、Hook が同じ Windows 側ディレクトリを `/mnt/c/Users/<Windowsユーザー名>/AppData/Local/CodexStreamDeck` として更新します。
+
+macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセットアップ・動作確認の対象外です。
 
 ## 表示内容
 
@@ -20,13 +27,16 @@ Codex agent の実行状況を Stream Deck のキーで確認する開発用プ�
 
 ## 必要なもの
 
-- Stream Deck 7.1 以降（Windows 10 以降、または macOS 12 以降）
-- Codex CLI（Hook を利用できる環境）
-- Python 3
+- Windows 10 以降、および Stream Deck 7.1 以降
+- WSL（Windows ドライブを `/mnt/c` として参照できること）
+- WSL 上の Codex CLI（Hook を利用できる環境）
+- WSL 上の Python 3
 - [Bun](https://bun.sh/) 1.3 以降（プラグインをビルド・開発する場合）
-- Windows + WSL 構成では、Windows の `%LOCALAPPDATA%` を WSL から `/mnt/c/Users/<Windowsユーザー名>/AppData/Local` として参照できること
+- Windows の `%LOCALAPPDATA%` を WSL から `/mnt/c/Users/<Windowsユーザー名>/AppData/Local` として参照できること
 
 ## セットアップ
+
+以下のコマンドは、特記がない限り WSL のリポジトリディレクトリで実行します。
 
 ### 1. 依存関係を入れてビルドする
 
