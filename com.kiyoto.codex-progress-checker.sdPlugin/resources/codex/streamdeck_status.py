@@ -81,7 +81,7 @@ def resolve_branch(cwd) -> Optional[str]:
         return None
 
     if result.returncode != 0:
-        # Gitリポジトリでない、または権限がない場合はここに来る。
+        # Gitリポジトリでない、権限がない、または未生成ブランチの場合はここに来る。
         return None
 
     branch = result.stdout.strip()
