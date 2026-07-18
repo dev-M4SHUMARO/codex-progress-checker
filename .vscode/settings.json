@@ -25,6 +25,7 @@
 		"editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
 	},
 	"editor.formatOnSave": true,
+	"files.eol": "\n",
 	"python.testing.pytestArgs": [
 		"tests"
 	],
