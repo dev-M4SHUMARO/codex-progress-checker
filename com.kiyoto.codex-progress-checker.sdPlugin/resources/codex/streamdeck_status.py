@@ -5,9 +5,14 @@
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Optional
+
+# ブランチ取得コマンドがリポジトリ外や巨大リポジトリで固まらないための上限秒数。
+GIT_BRANCH_TIMEOUT_SECONDS = 3
 
 # インストーラーが生成した共有ディレクトリ設定を、スクリプト自身の隣から読む。
 CONFIG_PATH = Path(__file__).with_name("config.json")
@@ -55,6 +60,34 @@ def resolve_state(event: str, tool_name=None) -> str:
     return STATUS_MAP.get(event, "unknown")
 
 
+def resolve_branch(cwd) -> Optional[str]:
+    """cwdがGitリポジトリなら現在のブランチ名を返し、それ以外はNoneを返す。"""
+
+    # cwdが無い、または文字列でない場合はGitを呼び出さない。
+    if not isinstance(cwd, str) or not cwd:
+        return None
+
+    try:
+        # detached HEADではブランチ名の代わりに"HEAD"が返るため、名前とみなさない。
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_BRANCH_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        # gitが未インストール、またはコマンドが応答しない場合は表示を諦める。
+        return None
+
+    if result.returncode != 0:
+        # Gitリポジトリでない、または権限がない場合はここに来る。
+        return None
+
+    branch = result.stdout.strip()
+    return branch if branch and branch != "HEAD" else None
+
+
 def main() -> int:
     """標準入力のHook payloadを読み、セッション単位の状態ファイルを更新する。"""
 
@@ -75,6 +108,7 @@ def main() -> int:
     # サブエージェントは独立表示し、それ以外はセッション単位で同じファイルを更新する。
     identity = agent_id or session_id
     filename = hashlib.sha256(identity.encode()).hexdigest()[:16] + ".json"
+    cwd = payload.get("cwd")
 
     # Stream Deck側が状態、プロジェクト名、更新順を判断できる最小情報を保存する。
     status = {
@@ -83,7 +117,9 @@ def main() -> int:
         "agent_id": agent_id,
         "event": event,
         "state": resolve_state(event, tool_name),
-        "cwd": payload.get("cwd"),
+        "cwd": cwd,
+        # Gitリポジトリでない場合はNoneのままとし、Stream Deck側で非表示にする。
+        "branch": resolve_branch(cwd),
         "updated_at": time.time(),
     }
 
