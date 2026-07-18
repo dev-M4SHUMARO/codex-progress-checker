@@ -28,6 +28,7 @@ type StatusSnapshot = {
 type CodexStatusSettings = {
   threadNumber?: number | string;
   projectFontSize?: number | string;
+  branchFontSize?: number | string;
 };
 
 /**
@@ -41,6 +42,13 @@ const POLL_INTERVAL_MS = 1_000;
 const DEFAULT_PROJECT_FONT_SIZE = 13;
 const MIN_PROJECT_FONT_SIZE = 8;
 const MAX_PROJECT_FONT_SIZE = 24;
+
+/**
+ * ブランチ名テキストのフォントサイズの初期値と範囲。
+ */
+const DEFAULT_BRANCH_FONT_SIZE = 11;
+const MIN_BRANCH_FONT_SIZE = 8;
+const MAX_BRANCH_FONT_SIZE = 24;
 
 /**
  * WSL側では以下と同じディレクトリ。
@@ -135,6 +143,11 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
   private readonly projectFontSizes = new Map<string, number>();
 
   /**
+   * アクションごとのブランチ名フォントサイズを保持する。
+   */
+  private readonly branchFontSizes = new Map<string, number>();
+
+  /**
    * 同じエラーを毎秒ログ出力しないために使う。
    */
   private lastLoggedError: string | undefined;
@@ -153,10 +166,15 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     ) - 1;
     this.offsets.set(ev.action.id, offset);
 
-    const fontSize = normalizeProjectFontSize(
+    const projectFontSize = normalizeProjectFontSize(
       ev.payload.settings.projectFontSize,
     );
-    this.projectFontSizes.set(ev.action.id, fontSize);
+    this.projectFontSizes.set(ev.action.id, projectFontSize);
+
+    const branchFontSize = normalizeBranchFontSize(
+      ev.payload.settings.branchFontSize,
+    );
+    this.branchFontSizes.set(ev.action.id, branchFontSize);
 
     const statuses = await this.loadStatusesSafely();
     const status = selectStatus(statuses, offset);
@@ -165,12 +183,18 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       ev.action,
       status,
       offset,
-      fontSize,
+      projectFontSize,
+      branchFontSize,
     );
 
     this.lastSignatures.set(
       ev.action.id,
-      this.createSignature(status, offset, fontSize),
+      this.createSignature(
+        status,
+        offset,
+        projectFontSize,
+        branchFontSize,
+      ),
     );
   }
 
@@ -186,6 +210,7 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     );
     this.offsets.delete(ev.action.id);
     this.projectFontSizes.delete(ev.action.id);
+    this.branchFontSizes.delete(ev.action.id);
     this.lastSignatures.delete(ev.action.id);
 
     if (this.visibleActionCount === 0) {
@@ -204,10 +229,15 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     ) - 1;
     this.offsets.set(ev.action.id, offset);
 
-    const fontSize = normalizeProjectFontSize(
+    const projectFontSize = normalizeProjectFontSize(
       ev.payload.settings.projectFontSize,
     );
-    this.projectFontSizes.set(ev.action.id, fontSize);
+    this.projectFontSizes.set(ev.action.id, projectFontSize);
+
+    const branchFontSize = normalizeBranchFontSize(
+      ev.payload.settings.branchFontSize,
+    );
+    this.branchFontSizes.set(ev.action.id, branchFontSize);
 
     const statuses = await this.loadStatusesSafely();
     const status = selectStatus(statuses, offset);
@@ -216,12 +246,18 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       ev.action,
       status,
       offset,
-      fontSize,
+      projectFontSize,
+      branchFontSize,
     );
 
     this.lastSignatures.set(
       ev.action.id,
-      this.createSignature(status, offset, fontSize),
+      this.createSignature(
+        status,
+        offset,
+        projectFontSize,
+        branchFontSize,
+      ),
     );
   }
 
@@ -236,18 +272,34 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     ) - 1;
     this.offsets.set(ev.action.id, offset);
 
-    const fontSize = normalizeProjectFontSize(
+    const projectFontSize = normalizeProjectFontSize(
       ev.payload.settings.projectFontSize,
     );
-    this.projectFontSizes.set(ev.action.id, fontSize);
+    this.projectFontSizes.set(ev.action.id, projectFontSize);
+
+    const branchFontSize = normalizeBranchFontSize(
+      ev.payload.settings.branchFontSize,
+    );
+    this.branchFontSizes.set(ev.action.id, branchFontSize);
 
     const statuses = await this.loadStatusesSafely();
     const status = selectStatus(statuses, offset);
 
-    await this.renderAction(ev.action, status, offset, fontSize);
+    await this.renderAction(
+      ev.action,
+      status,
+      offset,
+      projectFontSize,
+      branchFontSize,
+    );
     this.lastSignatures.set(
       ev.action.id,
-      this.createSignature(status, offset, fontSize),
+      this.createSignature(
+        status,
+        offset,
+        projectFontSize,
+        branchFontSize,
+      ),
     );
   }
 
@@ -302,12 +354,20 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       this.actions.forEach((visibleAction) => {
         const offset =
           this.offsets.get(visibleAction.id) ?? 0;
-        const fontSize =
+        const projectFontSize =
           this.projectFontSizes.get(visibleAction.id) ??
           DEFAULT_PROJECT_FONT_SIZE;
+        const branchFontSize =
+          this.branchFontSizes.get(visibleAction.id) ??
+          DEFAULT_BRANCH_FONT_SIZE;
         const status = selectStatus(statuses, offset);
         const signature =
-          this.createSignature(status, offset, fontSize);
+          this.createSignature(
+            status,
+            offset,
+            projectFontSize,
+            branchFontSize,
+          );
 
         if (
           signature ===
@@ -325,7 +385,8 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
             visibleAction,
             status,
             offset,
-            fontSize,
+            projectFontSize,
+            branchFontSize,
           ),
         );
       });
@@ -509,9 +570,15 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
     actionInstance: WillAppearEvent<CodexStatusSettings>["action"],
     status: StatusSnapshot,
     offset: number,
-    fontSize: number,
+    projectFontSize: number,
+    branchFontSize: number,
   ): Promise<void> {
-    const svg = createStatusSvg(status, offset, fontSize);
+    const svg = createStatusSvg(
+      status,
+      offset,
+      projectFontSize,
+      branchFontSize,
+    );
 
     await Promise.all([
       /*
@@ -532,7 +599,8 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
   private createSignature(
     status: StatusSnapshot,
     offset: number,
-    fontSize: number,
+    projectFontSize: number,
+    branchFontSize: number,
   ): string {
     return [
       offset,
@@ -541,7 +609,8 @@ export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
       status.branch ?? "",
       status.updatedAt,
       status.event ?? "",
-      fontSize,
+      projectFontSize,
+      branchFontSize,
     ].join("|");
   }
 }
@@ -606,6 +675,27 @@ function normalizeProjectFontSize(value: unknown): number {
   return Math.min(
     MAX_PROJECT_FONT_SIZE,
     Math.max(MIN_PROJECT_FONT_SIZE, Math.round(fontSize)),
+  );
+}
+
+/**
+ * ブランチ名テキストのフォントサイズを、表示可能な範囲へ丸める。
+ */
+function normalizeBranchFontSize(value: unknown): number {
+  const fontSize =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : DEFAULT_BRANCH_FONT_SIZE;
+
+  if (!Number.isFinite(fontSize)) {
+    return DEFAULT_BRANCH_FONT_SIZE;
+  }
+
+  return Math.min(
+    MAX_BRANCH_FONT_SIZE,
+    Math.max(MIN_BRANCH_FONT_SIZE, Math.round(fontSize)),
   );
 }
 
@@ -720,7 +810,8 @@ function maxLabelLength(fontSize: number): number {
 function createStatusSvg(
   status: StatusSnapshot,
   offset: number,
-  fontSize: number,
+  projectFontSize: number,
+  branchFontSize: number,
 ): string {
   const backgroundColor =
     STATE_COLORS[status.state];
@@ -733,10 +824,9 @@ function createStatusSvg(
   );
 
   const projectLabel = escapeXml(
-    truncate(status.project, maxLabelLength(fontSize)),
+    truncate(status.project, maxLabelLength(projectFontSize)),
   );
 
-  const branchFontSize = 11;
   const branchLabel =
     status.branch !== undefined
       ? escapeXml(
@@ -744,7 +834,9 @@ function createStatusSvg(
         )
       : undefined;
 
-  const projectY = branchLabel !== undefined ? 90 : 99;
+  const stateY = branchLabel !== undefined ? 65 : 70;
+  const projectY = branchLabel !== undefined ? 94 : 99;
+  const branchY = 123;
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg"
@@ -772,7 +864,7 @@ function createStatusSvg(
 
   <text
     x="72"
-    y="70"
+    y="${stateY}"
     text-anchor="middle"
     font-family="Arial, sans-serif"
     font-size="20"
@@ -786,7 +878,7 @@ function createStatusSvg(
     y="${projectY}"
     text-anchor="middle"
     font-family="Arial, sans-serif"
-    font-size="${fontSize}"
+    font-size="${projectFontSize}"
     fill="${textColor}">
     ${projectLabel}
   </text>
@@ -795,7 +887,7 @@ ${
       ? `
   <text
     x="72"
-    y="112"
+    y="${branchY}"
     text-anchor="middle"
     font-family="Arial, sans-serif"
     font-size="${branchFontSize}"

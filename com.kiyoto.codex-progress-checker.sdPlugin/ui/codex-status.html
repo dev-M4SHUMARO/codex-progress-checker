@@ -98,6 +98,12 @@
     <div class="hint">Font size of the project name on the key (8-24)</div>
   </div>
 
+  <div class="setting">
+    <label for="branch-font-size">Branch Font Size</label>
+    <input id="branch-font-size" type="number" min="8" max="24" step="1" value="11">
+    <div class="hint">Font size of the branch name on the key (8-24)</div>
+  </div>
+
   <section class="integration">
     <h2>Codex CLI Integration</h2>
     <div class="setting">
@@ -122,6 +128,9 @@
     // リポジトリ名テキストのフォントサイズ入力欄。
     const fontSizeInput = document.getElementById("project-font-size");
 
+    // ブランチ名テキストのフォントサイズ入力欄。
+    const branchFontSizeInput = document.getElementById("branch-font-size");
+
     // Codex連携の選択、実行、結果表示を操作するDOM参照を初期化時に固定する。
     const distributionSelect = document.getElementById("wsl-distribution");
     const installButton = document.getElementById("install-integration");
@@ -132,7 +141,11 @@
     let socket;
     let propertyInspectorUuid;
     let actionUuid;
-    let settings = { threadNumber: 1, projectFontSize: 13 };
+    let settings = {
+      threadNumber: 1,
+      projectFontSize: 13,
+      branchFontSize: 11,
+    };
 
     // WSL操作中の二重送信を防ぐため、UI全体で処理中状態を共有する。
     let integrationBusy = false;
@@ -156,6 +169,15 @@
       return Math.min(24, Math.max(8, Math.round(parsed)));
     }
 
+    // ブランチ名のフォントサイズを8〜24の整数へ変換する。
+    function normalizeBranchFontSize(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) {
+        return 11;
+      }
+      return Math.min(24, Math.max(8, Math.round(parsed)));
+    }
+
     // 受け取った設定を現在値へ統合し、正規化した値を入力欄へ反映する。
     // 初期表示とStream Deckからの設定更新を同じ手順で処理するための関数。
     function applySettings(nextSettings) {
@@ -167,8 +189,10 @@
       // 保存値と表示値を同じ正規化結果に揃え、再表示時の差異を防ぐ。
       settings.threadNumber = normalizeThreadNumber(settings.threadNumber);
       settings.projectFontSize = normalizeProjectFontSize(settings.projectFontSize);
+      settings.branchFontSize = normalizeBranchFontSize(settings.branchFontSize);
       input.value = String(settings.threadNumber);
       fontSizeInput.value = String(settings.projectFontSize);
+      branchFontSizeInput.value = String(settings.branchFontSize);
     }
 
     // Codex連携操作をバックエンドへ送り、応答まで入力をロックする。
@@ -341,6 +365,20 @@
     fontSizeInput.addEventListener("change", () => {
       const projectFontSize = normalizeProjectFontSize(fontSizeInput.value);
       applySettings({ projectFontSize });
+
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          event: "setSettings",
+          context: propertyInspectorUuid,
+          payload: settings,
+        }));
+      }
+    });
+
+    // ブランチ名のフォントサイズも対象キー固有の設定として保存する。
+    branchFontSizeInput.addEventListener("change", () => {
+      const branchFontSize = normalizeBranchFontSize(branchFontSizeInput.value);
+      applySettings({ branchFontSize });
 
       if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
