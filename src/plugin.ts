@@ -5,5 +5,4 @@ import { CodexStatusAction } from "./actions/codex-progress-checker";
 streamDeck.actions.registerAction(
   new CodexStatusAction(),
 );
-
 streamDeck.connect();

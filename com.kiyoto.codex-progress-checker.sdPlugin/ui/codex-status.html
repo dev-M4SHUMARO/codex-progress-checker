@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codex Status Settings</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 12px;
+      color: #d8d8d8;
+      font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .setting {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
+      padding: 5px 7px;
+      color: #fff;
+      background: #3a3a3a;
+      border: 1px solid #555;
+      border-radius: 3px;
+    }
+
+    .hint {
+      grid-column: 2;
+      margin-top: 2px;
+      color: #aaa;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="setting">
+    <label for="thread-number">Recency Rank</label>
+    <input id="thread-number" type="number" min="1" step="1" value="1">
+    <div class="hint">1 = Latest, 2 = Second most recent</div>
+  </div>
+
+  <script>
+    // 入力欄とStream Deckとの通信に必要な状態を保持する。
+    // settingsは設定がまだ保存されていない場合、最新を表す1から始める。
+    const input = document.getElementById("thread-number");
+    let socket;
+    let propertyInspectorUuid;
+    let settings = { threadNumber: 1 };
+
+    // 入力値を1以上の整数へ変換する。
+    // 空欄、負数、小数、数値以外が保存されないようにするために使用する。
+    function normalizeThreadNumber(value) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed >= 1
+        ? Math.floor(parsed)
+        : 1;
+    }
+
+    // 受け取った設定を現在値へ統合し、正規化した値を入力欄へ反映する。
+    // 初期表示とStream Deckからの設定更新を同じ手順で処理するための関数。
+    function applySettings(nextSettings) {
+      settings = {
+        ...settings,
+        ...nextSettings,
+      };
+      settings.threadNumber = normalizeThreadNumber(settings.threadNumber);
+      input.value = String(settings.threadNumber);
+    }
+
+    // Property Inspectorが開かれたとき、Stream Deckアプリから呼び出される。
+    // 接続情報と対象キーの設定を受け取り、WebSocket通信を開始する。
+    window.connectElgatoStreamDeckSocket = (
+      port,
+      uuid,
+      registerEvent,
+      _info,
+      actionInfo,
+    ) => {
+      // 設定保存時のcontextには、Stream Deckから渡された
+      // Property Inspector自身のUUIDを指定する必要がある。
+      propertyInspectorUuid = uuid;
+
+      // actionInfoから対象キーに保存されている現在の設定を取得する。
+      const parsedActionInfo = JSON.parse(actionInfo);
+      applySettings(parsedActionInfo.payload?.settings ?? {});
+
+      // Stream Deckアプリが指定したローカルポートへ接続する。
+      // Property InspectorとStream Deckプラグイン間の設定通知に使用する。
+      socket = new WebSocket(`ws://127.0.0.1:${port}`);
+
+      // 接続後にProperty Inspectorを登録し、イベントの送受信を有効にする。
+      socket.addEventListener("open", () => {
+        socket.send(JSON.stringify({
+          event: registerEvent,
+          uuid,
+        }));
+      });
+
+      // Stream Deck側で対象キーの設定が更新された場合、入力欄も同期する。
+      // このWebSocketは現在開いているProperty Inspector専用なので、
+      // didReceiveSettingsイベントだけを判定すれば対象キーを識別できる。
+      socket.addEventListener("message", (event) => {
+        const message = JSON.parse(event.data);
+        if (message.event === "didReceiveSettings") {
+          applySettings(message.payload?.settings ?? {});
+        }
+      });
+    };
+
+    // ユーザーが入力を確定したとき、値を正規化してStream Deckへ保存する。
+    // 保存された設定は対象キー固有の値としてプラグインから参照される。
+    input.addEventListener("change", () => {
+      const threadNumber = normalizeThreadNumber(input.value);
+      applySettings({ threadNumber });
+
+      // WebSocket接続が完了している場合だけ送信し、通信エラーを防ぐ。
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          event: "setSettings",
+          context: propertyInspectorUuid,
+          payload: settings,
+        }));
+      }
+    });
+  </script>
+</body>
+</html>

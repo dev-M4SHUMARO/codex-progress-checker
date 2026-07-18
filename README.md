@@ -13,7 +13,7 @@ macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセ
 
 ## 表示内容
 
-キーには状態と、Codex を起動したプロジェクトディレクトリ名を表示します。状態ファイルは 1 秒ごとに確認され、キーを押すと即時に再読み込みします。
+キーには対象スレッドの位置、状態、Codex を起動したプロジェクトディレクトリ名を表示します。状態ファイルは 1 秒ごとに確認され、キーを押すと即時に再読み込みします。
 
 | 表示 | 色 | Hook イベント |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ macOS や Windows 上で直接 Codex CLI を実行する構成は、現在はセ
 | `DONE` | 緑 | `Stop` / `SubagentStop` |
 | `ERROR` | 赤 | 状態ファイルの読み込み・形式に問題がある場合 |
 
-複数の Codex セッションがある場合は、最終更新時刻がもっとも新しい状態を表示します。同じアクションを複数のキーに置いた場合は、すべて同じ状態に更新されます。
+複数の Codex セッションがある場合は、状態ファイルを最終更新時刻の新しい順に並べます。各キーの設定画面にある「新しさの順位」へ `1`（最新）、`2`（2番目に新しい）、`3`（3番目に新しい）のように指定すると、その順位の状態を表示します。キー上には `LATEST` または `RECENT #2` のように表示されます。値に上限はありません。対象のスレッドがない場合は `IDLE / No thread` と表示します。
 
 ## 必要なもの
 
@@ -53,7 +53,7 @@ Stream Deck を起動した状態で、リポジトリのルートから実行�
 bunx streamdeck link com.kiyoto.codex-progress-checker.sdPlugin
 ```
 
-Stream Deck アプリのアクション一覧に **codex-progress-checker** が現れたら、`CodexProgressChecker` アクションを任意のキーへ配置してください。
+Stream Deck アプリのアクション一覧に **codex-progress-checker** が現れたら、`Codex Status` アクションを任意のキーへ配置してください。同じアクションを複数配置し、それぞれの設定画面で「新しさの順位」を `1`、`2`、`3`…と指定すると、並行作業中の複数スレッドを確認できます。
 
 ### 3. Codex Hook を設定する
 
@@ -124,6 +124,7 @@ bun run build
 | ファイル | 役割 |
 | --- | --- |
 | [`src/actions/codex-progress-checker.ts`](src/actions/codex-progress-checker.ts) | 状態 JSON の読み込みと Stream Deck キーの SVG 描画 |
+| [`com.kiyoto.codex-progress-checker.sdPlugin/ui/codex-status.html`](com.kiyoto.codex-progress-checker.sdPlugin/ui/codex-status.html) | 表示するスレッド位置をキーごとに設定する画面 |
 | [`codex_settings/streamdeck_status.py`](codex_settings/streamdeck_status.py) | Codex Hook の入力を状態 JSON に変換 |
 | [`codex_settings/hooks.json`](codex_settings/hooks.json) | Codex Hook 設定のひな形 |
 | [`com.kiyoto.codex-progress-checker.sdPlugin/manifest.json`](com.kiyoto.codex-progress-checker.sdPlugin/manifest.json) | Stream Deck プラグインのマニフェスト |

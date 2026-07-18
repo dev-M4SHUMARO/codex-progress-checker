@@ -4,10 +4,11 @@
   "Author": "kiyoto",
   "Actions": [
     {
-      "Name": "CodexProgressChecker",
+      "Name": "Codex Status",
       "UUID": "com.kiyoto.codex-progress-checker.status",
       "Icon": "imgs/actions/counter/icon",
-      "Tooltip": "Displays a count, which increments by one on press.",
+      "Tooltip": "Shows a Codex thread selected by its recency.",
+      "PropertyInspectorPath": "ui/codex-status.html",
       "Controllers": ["Keypad"],
       "States": [
         {

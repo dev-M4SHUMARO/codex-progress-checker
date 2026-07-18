@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 
 import streamDeck, {
   action,
+  type DidReceiveSettingsEvent,
   type KeyDownEvent,
   SingletonAction,
   type WillAppearEvent,
@@ -21,6 +22,10 @@ type StatusSnapshot = {
   project: string;
   updatedAt: number;
   event?: string;
+};
+
+type CodexStatusSettings = {
+  threadNumber?: number | string;
 };
 
 /**
@@ -79,25 +84,16 @@ const EVENT_STATE_MAP: Record<string, CodexState> = {
   SubagentStop: "completed",
 };
 
-const IDLE_STATUS: StatusSnapshot = {
-  state: "idle",
-  project: "Codex",
-  updatedAt: 0,
-};
-
 const ERROR_STATUS: StatusSnapshot = {
   state: "error",
   project: "Read error",
   updatedAt: 0,
 };
 
-/**
- * このUUIDはmanifest.jsonのActions[].UUIDと一致させること。
- */
 @action({
   UUID: "com.kiyoto.codex-progress-checker.status",
 })
-export class CodexStatusAction extends SingletonAction {
+export class CodexStatusAction extends SingletonAction<CodexStatusSettings> {
   private pollingTimer:
     | ReturnType<typeof setInterval>
     | undefined;
@@ -116,7 +112,12 @@ export class CodexStatusAction extends SingletonAction {
   /**
    * 同じ内容でsetImageを何度も呼ばないために使う。
    */
-  private lastBroadcastSignature: string | undefined;
+  private readonly lastSignatures = new Map<string, string>();
+
+  /**
+   * アクションごとのスレッド番号を、配列用の0始まりで保持する。
+   */
+  private readonly offsets = new Map<string, number>();
 
   /**
    * 同じエラーを毎秒ログ出力しないために使う。
@@ -127,32 +128,43 @@ export class CodexStatusAction extends SingletonAction {
    * Stream Deck上にキーが表示されたときに呼ばれる。
    */
   override async onWillAppear(
-    ev: WillAppearEvent,
+    ev: WillAppearEvent<CodexStatusSettings>,
   ): Promise<void> {
     this.visibleActionCount += 1;
     this.startPolling();
 
-    const status = await this.loadLatestStatusSafely();
+    const offset = normalizeThreadNumber(
+      ev.payload.settings.threadNumber,
+    ) - 1;
+    this.offsets.set(ev.action.id, offset);
+
+    const statuses = await this.loadStatusesSafely();
+    const status = selectStatus(statuses, offset);
 
     await this.renderAction(
       ev.action,
       status,
+      offset,
     );
 
-    this.lastBroadcastSignature =
-      this.createSignature(status);
+    this.lastSignatures.set(
+      ev.action.id,
+      this.createSignature(status, offset),
+    );
   }
 
   /**
    * ページ移動などでキーが表示されなくなったときに呼ばれる。
    */
   override onWillDisappear(
-    _ev: WillDisappearEvent,
+    ev: WillDisappearEvent<CodexStatusSettings>,
   ): void {
     this.visibleActionCount = Math.max(
       0,
       this.visibleActionCount - 1,
     );
+    this.offsets.delete(ev.action.id);
+    this.lastSignatures.delete(ev.action.id);
 
     if (this.visibleActionCount === 0) {
       this.stopPolling();
@@ -163,17 +175,47 @@ export class CodexStatusAction extends SingletonAction {
    * キーを押した場合、即座に再読み込みする。
    */
   override async onKeyDown(
-    ev: KeyDownEvent,
+    ev: KeyDownEvent<CodexStatusSettings>,
   ): Promise<void> {
-    const status = await this.loadLatestStatusSafely();
+    const offset = normalizeThreadNumber(
+      ev.payload.settings.threadNumber,
+    ) - 1;
+    this.offsets.set(ev.action.id, offset);
+
+    const statuses = await this.loadStatusesSafely();
+    const status = selectStatus(statuses, offset);
 
     await this.renderAction(
       ev.action,
       status,
+      offset,
     );
 
-    this.lastBroadcastSignature =
-      this.createSignature(status);
+    this.lastSignatures.set(
+      ev.action.id,
+      this.createSignature(status, offset),
+    );
+  }
+
+  /**
+   * 設定画面で値が変わったキーだけを即座に更新する。
+   */
+  override async onDidReceiveSettings(
+    ev: DidReceiveSettingsEvent<CodexStatusSettings>,
+  ): Promise<void> {
+    const offset = normalizeThreadNumber(
+      ev.payload.settings.threadNumber,
+    ) - 1;
+    this.offsets.set(ev.action.id, offset);
+
+    const statuses = await this.loadStatusesSafely();
+    const status = selectStatus(statuses, offset);
+
+    await this.renderAction(ev.action, status, offset);
+    this.lastSignatures.set(
+      ev.action.id,
+      this.createSignature(status, offset),
+    );
   }
 
   /**
@@ -215,20 +257,8 @@ export class CodexStatusAction extends SingletonAction {
     this.polling = true;
 
     try {
-      const status =
-        await this.loadLatestStatusSafely();
-
-      const signature =
-        this.createSignature(status);
-
-      if (
-        signature ===
-        this.lastBroadcastSignature
-      ) {
-        return;
-      }
-
-      this.lastBroadcastSignature = signature;
+      const statuses =
+        await this.loadStatusesSafely();
 
       const updates: Promise<void>[] = [];
 
@@ -237,10 +267,28 @@ export class CodexStatusAction extends SingletonAction {
        * 表示中の全キーを更新する。
        */
       this.actions.forEach((visibleAction) => {
+        const offset =
+          this.offsets.get(visibleAction.id) ?? 0;
+        const status = selectStatus(statuses, offset);
+        const signature =
+          this.createSignature(status, offset);
+
+        if (
+          signature ===
+          this.lastSignatures.get(visibleAction.id)
+        ) {
+          return;
+        }
+
+        this.lastSignatures.set(
+          visibleAction.id,
+          signature,
+        );
         updates.push(
           this.renderAction(
             visibleAction,
             status,
+            offset,
           ),
         );
       });
@@ -255,15 +303,15 @@ export class CodexStatusAction extends SingletonAction {
    * ファイル読み込み失敗時でもプラグインを落とさず、
    * ERROR表示へ切り替える。
    */
-  private async loadLatestStatusSafely():
-    Promise<StatusSnapshot> {
+  private async loadStatusesSafely():
+    Promise<StatusSnapshot[]> {
     try {
-      const status =
-        await this.loadLatestStatus();
+      const statuses =
+        await this.loadStatuses();
 
       this.lastLoggedError = undefined;
 
-      return status;
+      return statuses;
     } catch (error) {
       const message =
         error instanceof Error
@@ -278,16 +326,16 @@ export class CodexStatusAction extends SingletonAction {
         this.lastLoggedError = message;
       }
 
-      return ERROR_STATUS;
+      return [ERROR_STATUS];
     }
   }
 
   /**
    * ディレクトリ内のJSONを読み、
-   * updated_atが最も新しいものを返す。
+   * 状態をupdated_atの新しい順で返す。
    */
-  private async loadLatestStatus():
-    Promise<StatusSnapshot> {
+  private async loadStatuses():
+    Promise<StatusSnapshot[]> {
     let entries;
 
     try {
@@ -306,7 +354,7 @@ export class CodexStatusAction extends SingletonAction {
         isNodeError(error) &&
         error.code === "ENOENT"
       ) {
-        return IDLE_STATUS;
+        return [];
       }
 
       throw error;
@@ -319,7 +367,7 @@ export class CodexStatusAction extends SingletonAction {
     );
 
     if (jsonFiles.length === 0) {
-      return IDLE_STATUS;
+      return [];
     }
 
     const statuses = (
@@ -341,11 +389,11 @@ export class CodexStatusAction extends SingletonAction {
     );
 
     if (statuses.length === 0) {
-      return {
+      return [{
         state: "error",
         project: "Invalid JSON",
         updatedAt: 0,
-      };
+      }];
     }
 
     statuses.sort(
@@ -353,7 +401,7 @@ export class CodexStatusAction extends SingletonAction {
         b.updatedAt - a.updatedAt,
     );
 
-    return statuses[0];
+    return statuses;
   }
 
   /**
@@ -415,10 +463,11 @@ export class CodexStatusAction extends SingletonAction {
    * 状態に応じたSVGを生成してStream Deckへ送る。
    */
   private async renderAction(
-    actionInstance: WillAppearEvent["action"],
+    actionInstance: WillAppearEvent<CodexStatusSettings>["action"],
     status: StatusSnapshot,
+    offset: number,
   ): Promise<void> {
-    const svg = createStatusSvg(status);
+    const svg = createStatusSvg(status, offset);
 
     await Promise.all([
       /*
@@ -438,14 +487,58 @@ export class CodexStatusAction extends SingletonAction {
    */
   private createSignature(
     status: StatusSnapshot,
+    offset: number,
   ): string {
     return [
+      offset,
       status.state,
       status.project,
       status.updatedAt,
       status.event ?? "",
     ].join("|");
   }
+}
+
+/**
+ * 0を最新として、設定された個数前の状態を選ぶ。
+ */
+function selectStatus(
+  statuses: StatusSnapshot[],
+  offset: number,
+): StatusSnapshot {
+  const readError = statuses.find(
+    (status) =>
+      status.state === "error" &&
+      status.updatedAt === 0,
+  );
+
+  if (readError !== undefined) {
+    return readError;
+  }
+
+  return statuses[offset] ?? {
+    state: "idle",
+    project: offset === 0 ? "Codex" : "No thread",
+    updatedAt: 0,
+  };
+}
+
+function normalizeThreadNumber(value: unknown): number {
+  const threadNumber =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : 1;
+
+  if (!Number.isFinite(threadNumber) || threadNumber < 1) {
+    return 1;
+  }
+
+  return Math.min(
+    Math.floor(threadNumber),
+    Number.MAX_SAFE_INTEGER,
+  );
 }
 
 /**
@@ -541,6 +634,7 @@ function getProjectName(
  */
 function createStatusSvg(
   status: StatusSnapshot,
+  offset: number,
 ): string {
   const backgroundColor =
     STATE_COLORS[status.state];
@@ -570,7 +664,19 @@ function createStatusSvg(
 
   <text
     x="72"
-    y="66"
+    y="27"
+    text-anchor="middle"
+    font-family="Arial, sans-serif"
+    font-size="12"
+    font-weight="700"
+    fill="${textColor}"
+    opacity="0.8">
+    ${offset === 0 ? "LATEST" : `RECENT #${offset + 1}`}
+  </text>
+
+  <text
+    x="72"
+    y="70"
     text-anchor="middle"
     font-family="Arial, sans-serif"
     font-size="20"
@@ -581,7 +687,7 @@ function createStatusSvg(
 
   <text
     x="72"
-    y="94"
+    y="99"
     text-anchor="middle"
     font-family="Arial, sans-serif"
     font-size="13"
